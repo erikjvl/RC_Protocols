@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>sBus Serial Monitor</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    font-size: 13px;
+}
+
+button {
+    padding: 5px 10px;
+    margin: 3px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+button:disabled {
+    background-color: #cccccc;
+}
+
+.status {
+    margin: 8px 0;
+    padding: 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.connected {
+    background-color: #dff0d8;
+    color: #3c763d;
+}
+
+.disconnected {
+    background-color: #f2dede;
+    color: #a94442;
+}
+
+.channel-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+}
+
+.channel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.channel-label {
+    width: 55px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.channel-bar {
+    height: 16px;
+    width: 260px;
+    background-color: #e0e0e0;
+    border: 1px solid #999;
+    border-radius: 4px;
+    position: relative;
+}
+
+.channel-fill {
+    height: 100%;
+    width: 0%;
+    background-color: #4CAF50;
+    border-radius: 4px;
+    transition: width 0.1s;
+}
+
+.channel-value {
+    width: 50px;
+    text-align: right;
+    font-size: 12px;
+}
+
+.warning {
+    background-color: #fff3cd;
+    color: #856404;
+    padding: 8px;
+    border-radius: 4px;
+    margin: 10px 0;
+    border: 1px solid #ffeeba;
+    font-size: 12px;
+}
+</style>
+</head>
+
+<body>
+<h2>sBus Serial Monitor</h2>
+
+
+<button id="connectBtn">Connect</button>
+<button id="disconnectBtn" disabled>Disconnect</button>
+
+<div id="status" class="status disconnected">Disconnected</div>
+
+<h3 style="margin-bottom:4px;">Channels 1–16</h3>
+<div id="channels" class="channel-container"></div>
+
+<div class="sbus-info" style="margin-top:10px;">
+    Lost Frames: <span id="lostFrames">0</span>
+    <button id="resetLostFrames">Reset</button>
+    Failsafe: <span id="failsafe">OFF</span>
+</div>
+
+<script>
+let port = null;
+let reader = null;
+let keepReading = false;
+let sbusBuffer = new Uint8Array(25);
+let bufferPosition = 0;
+let lostFrames = 0;
+
+const connectBtn = document.getElementById("connectBtn");
+const disconnectBtn = document.getElementById("disconnectBtn");
+const resetLostFramesBtn = document.getElementById("resetLostFrames");
+const statusDiv = document.getElementById("status");
+const channelsContainer = document.getElementById("channels");
+const lostFramesSpan = document.getElementById("lostFrames");
+const failsafeSpan = document.getElementById("failsafe");
+
+/* ---- 16 KANALEN ---- */
+const channelConfig = [];
+for (let i = 1; i <= 16; i++) {
+    channelConfig.push({
+        number: i,
+        name: `CH${i}`
+    });
+}
+
+channelConfig.forEach(ch => {
+    const div = document.createElement("div");
+    div.className = "channel";
+
+    div.innerHTML = `
+        <div class="channel-label">${ch.name}</div>
+        <div class="channel-bar">
+            <div class="channel-fill" id="channel${ch.number}"></div>
+        </div>
+        <div class="channel-value" id="channelValue${ch.number}">0</div>
+    `;
+
+    channelsContainer.appendChild(div);
+});
+
+/* ---------------- RESET STATE ---------------- */
+function resetState() {
+    bufferPosition = 0;
+    sbusBuffer = new Uint8Array(25);
+    lostFrames = 0;
+    lostFramesSpan.textContent = "0";
+
+    failsafeSpan.textContent = "OFF";
+    failsafeSpan.style.color = "green";
+
+    for (let i = 1; i <= 16; i++) {
+        document.getElementById(`channel${i}`).style.width = "0%";
+        document.getElementById(`channelValue${i}`).textContent = "0";
+    }
+}
+
+/* ---------------- CONNECT ---------------- */
+connectBtn.addEventListener("click", connectToSerial);
+
+async function connectToSerial() {
+    // Stop oude verbinding volledig
+    keepReading = false;
+
+    if (reader) {
+        try { await reader.cancel(); } catch(e) {}
+        reader = null;
+    }
+
+    if (port) {
+        try { await port.close(); } catch(e) {}
+        port = null;
+    }
+
+    resetState();
+    keepReading = true;
+
+    try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 100000, parity: "even", stopBits: 2, dataBits: 8 });
+
+        statusDiv.textContent = "Connected";
+        statusDiv.className = "status connected";
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+
+        readFromSerial();
+    } catch (err) {
+        statusDiv.textContent = "Error: " + err.message;
+    }
+}
+
+/* ---------------- DISCONNECT ---------------- */
+disconnectBtn.addEventListener("click", disconnectFromSerial);
+
+async function disconnectFromSerial() {
+    keepReading = false;
+
+    try {
+        if (reader) {
+            await reader.cancel();
+            reader.releaseLock();
+        }
+    } catch(e) {}
+
+    try {
+        if (port) await port.close();
+    } catch(e) {}
+
+    reader = null;
+    port = null;
+
+    resetState();
+
+    statusDiv.textContent = "Disconnected";
+    statusDiv.className = "status disconnected";
+    connectBtn.disabled = false;
+    disconnectBtn.disabled = true;
+}
+
+/* ---------------- SERIAL READER ---------------- */
+async function readFromSerial() {
+    while (port && port.readable && keepReading) {
+        try {
+            reader = port.readable.getReader();
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            if (value) {
+                for (let b of value) processByte(b);
+            }
+        } finally {
+            if (reader) reader.releaseLock();
+        }
+    }
+}
+
+/* ---------------- SBUS PARSER ---------------- */
+function processByte(byte) {
+    if (bufferPosition === 0 && byte !== 0x0F) return;
+
+    sbusBuffer[bufferPosition++] = byte;
+
+    if (bufferPosition === 25) {
+        if (sbusBuffer[24] === 0x00) parseSbusFrame(sbusBuffer);
+        bufferPosition = 0;
+    }
+}
+
+function parseSbusFrame(frame) {
+    const failsafe = (frame[23] & 0x08) !== 0;
+    failsafeSpan.textContent = failsafe ? "ACTIVE" : "OFF";
+    failsafeSpan.style.color = failsafe ? "red" : "green";
+
+    if (frame[23] & 0x04 && !failsafe) {
+        lostFrames++;
+        lostFramesSpan.textContent = lostFrames;
+    }
+
+    const ch = new Array(16).fill(0);
+    ch[0] = ((frame[1] | frame[2] << 8) & 0x07FF);
+    ch[1] = ((frame[2] >> 3 | frame[3] << 5) & 0x07FF);
+    ch[2] = ((frame[3] >> 6 | frame[4] << 2 | frame[5] << 10) & 0x07FF);
+    ch[3] = ((frame[5] >> 1 | frame[6] << 7) & 0x07FF);
+    ch[4] = ((frame[6] >> 4 | frame[7] << 4) & 0x07FF);
+    ch[5] = ((frame[7] >> 7 | frame[8] << 1 | frame[9] << 9) & 0x07FF);
+    ch[6] = ((frame[9] >> 2 | frame[10] << 6) & 0x07FF);
+    ch[7] = ((frame[10] >> 5 | frame[11] << 3) & 0x07FF);
+    ch[8] = ((frame[12] | frame[13] << 8) & 0x07FF);
+    ch[9] = ((frame[13] >> 3 | frame[14] << 5) & 0x07FF);
+    ch[10] = ((frame[14] >> 6 | frame[15] << 2 | frame[16] << 10) & 0x07FF);
+    ch[11] = ((frame[16] >> 1 | frame[17] << 7) & 0x07FF);
+    ch[12] = ((frame[17] >> 4 | frame[18] << 4) & 0x07FF);
+    ch[13] = ((frame[18] >> 7 | frame[19] << 1 | frame[20] << 9) & 0x07FF);
+    ch[14] = ((frame[20] >> 2 | frame[21] << 6) & 0x07FF);
+    ch[15] = ((frame[21] >> 5 | frame[22] << 3) & 0x07FF);
+
+    channelConfig.forEach(cfg => {
+        const idx = cfg.number - 1;
+        const val = ch[idx];
+
+        const fill = document.getElementById(`channel${cfg.number}`);
+        const txt = document.getElementById(`channelValue${cfg.number}`);
+
+        const pct = ((val - 172) / (1811 - 172)) * 100;
+        fill.style.width = pct + "%";
+        txt.textContent = val;
+    });
+}
+</script>
+
+<div class="warning">
+    The sBus inverted signal is not supported, use a signal inverter.
+</div>
+
+</body>
+</html>
