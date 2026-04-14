@@ -159,11 +159,16 @@ Compatible with:
 *   Gamepad Tester
 
 * * *
-**🚀Multiplex switches **
+**🚀Multiplex switches**
 Example channel configuration. 
+Please addept to fit your own preferences.
+
 ![image](./images/1.png)
+
 ![image](./images/2.png)
+
 ![image](./images/3.png)
+
 ![image](./images/4.png)
 
 * * *
