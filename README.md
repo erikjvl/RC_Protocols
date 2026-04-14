@@ -171,11 +171,8 @@ Compatible with:
 
 **📜 Creative Common License**
 
-·        Attribution-NonCommercial-ShareAlike
-
-·        https://creativecommons.org/licenses/by-nc-sa/4.0/
-
-·
+*   Attribution-NonCommercial-ShareAlike
+*   https://creativecommons.org/licenses/by-nc-sa/4.0/
 
 * * *
 
