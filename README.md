@@ -161,8 +161,7 @@ Compatible with:
 * * *
 **🚀Multiplex switches**
 
-Example channel configuration. Always use a fixed 68%, 27% or 3% weight in the mix. 
-Please addept to fit your own preferences.
+Example channel configuration. Always use a fixed 68%, 27% or 3% weight in a single channel mix and addept the order of the swithces to fit your own preferences.
 
 ![image](./images/1.png)
 
